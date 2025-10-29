@@ -6,7 +6,6 @@ import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
-import java.time.Duration;
 import java.time.LocalDate;
 
 @Data
@@ -21,5 +20,5 @@ public class Film {
     @NotNull
     private LocalDate releaseDate;
     @Positive
-    private Duration duration;
+    private Integer duration;
 }
