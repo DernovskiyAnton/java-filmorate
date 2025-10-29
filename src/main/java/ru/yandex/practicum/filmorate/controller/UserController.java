@@ -19,7 +19,7 @@ import java.util.Map;
 
 @Slf4j
 @RestController
-@RequestMapping("/filmorate/users")
+@RequestMapping("/users")
 public class UserController {
 
     private final Map<Long, User> users = new HashMap<>();
