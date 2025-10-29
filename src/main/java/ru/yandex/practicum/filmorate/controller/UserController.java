@@ -26,6 +26,10 @@ public class UserController {
 
     @PostMapping
     public User create(@Valid @RequestBody User user) {
+        if (user.getName() == null || user.getName().isBlank()) {
+            user.setName(user.getLogin());
+        }
+
         validBirthDate(user);
         user.setId(getNextId());
         users.put(user.getId(), user);
@@ -34,6 +38,10 @@ public class UserController {
 
     @PutMapping
     public User update(@Valid @RequestBody User user) {
+        if (user.getName() == null || user.getName().isBlank()) {
+            user.setName(user.getLogin());
+        }
+
         validBirthDate(user);
 
         if (users.containsKey(user.getId())) {
