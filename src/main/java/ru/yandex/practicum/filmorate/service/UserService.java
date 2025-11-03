@@ -104,3 +104,4 @@ public class UserService {
             throw new ValidationException("Дата рождения не может быть позднее сегодня");
         }
     }
+}
