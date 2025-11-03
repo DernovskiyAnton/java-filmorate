@@ -4,9 +4,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import ru.yandex.practicum.filmorate.exception.NotFoundException;
+import ru.yandex.practicum.filmorate.exception.ValidationException;
 import ru.yandex.practicum.filmorate.model.User;
 import ru.yandex.practicum.filmorate.storage.InMemoryUserStorage;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -19,6 +21,7 @@ public class UserService {
     private final InMemoryUserStorage inMemoryUserStorage;
 
     public User create(User user) {
+        validateUser(user);
         setNameIfEmpty(user);
         User createdUser = inMemoryUserStorage.create(user);
         log.info("Создан пользователь: {}", createdUser);
@@ -27,7 +30,7 @@ public class UserService {
 
     public User update(User user) {
         setNameIfEmpty(user);
-
+        validateUser(user);
         if (inMemoryUserStorage.findById(user.getId()).isEmpty()) {
             throw new NotFoundException("Пользователь с id = " + user.getId() + " не найден.");
         }
@@ -95,4 +98,9 @@ public class UserService {
             user.setName(user.getLogin());
         }
     }
-}
+
+    private void validateUser(User user) {
+        if (user.getBirthday() != null && user.getBirthday().isAfter(LocalDate.now())) {
+            throw new ValidationException("Дата рождения не может быть позднее сегодня");
+        }
+    }
