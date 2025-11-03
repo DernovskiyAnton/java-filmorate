@@ -23,7 +23,7 @@ public class InMemoryFilmStorage implements FilmStorage {
         return Optional.ofNullable(films.get(id));
     }
 
-    public long getNextId () {
+    public long getNextId() {
         long currentMaxId = films.keySet().stream().mapToLong(id -> id).max().orElse(0);
         return ++currentMaxId;
     }
