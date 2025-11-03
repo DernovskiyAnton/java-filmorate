@@ -21,7 +21,6 @@ public class UserService {
     private final InMemoryUserStorage inMemoryUserStorage;
 
     public User create(User user) {
-        validateUser(user);
         setNameIfEmpty(user);
         User createdUser = inMemoryUserStorage.create(user);
         log.info("Создан пользователь: {}", createdUser);
@@ -29,7 +28,6 @@ public class UserService {
     }
 
     public User update(User user) {
-        validateUser(user);
         setNameIfEmpty(user);
 
         if (inMemoryUserStorage.findById(user.getId()).isEmpty()) {
@@ -92,12 +90,6 @@ public class UserService {
                 .filter(friendId -> otherUser.getFriends().contains(friendId))
                 .map(this::findById)
                 .collect(Collectors.toList());
-    }
-
-    private void validateUser(User user) {
-        if (user.getBirthday() != null && user.getBirthday().isAfter(LocalDate.now())) {
-            throw new ValidationException("Дата рождения не может быть позднее сегодня");
-        }
     }
 
     private void setNameIfEmpty(User user) {
