@@ -7,8 +7,11 @@ import org.springframework.stereotype.Service;
 import ru.yandex.practicum.filmorate.exception.NotFoundException;
 import ru.yandex.practicum.filmorate.exception.ValidationException;
 import ru.yandex.practicum.filmorate.model.Film;
+import ru.yandex.practicum.filmorate.model.Genre;
 import ru.yandex.practicum.filmorate.model.User;
 import ru.yandex.practicum.filmorate.storage.FilmDbStorage;
+import ru.yandex.practicum.filmorate.storage.GenreDao;
+import ru.yandex.practicum.filmorate.storage.MpaDao;
 import ru.yandex.practicum.filmorate.storage.UserStorage;
 
 import java.time.LocalDate;
@@ -25,18 +28,25 @@ public class FilmService {
     private final FilmDbStorage filmStorage;
     private final UserStorage userStorage;
     private final JdbcTemplate jdbcTemplate;
+    private final GenreDao genreDao;
+    private final MpaDao mpaDao;
 
     public FilmService(@Qualifier("filmDbStorage") FilmDbStorage filmStorage,
                        @Qualifier("userDbStorage") UserStorage userStorage,
-                       JdbcTemplate jdbcTemplate) {
+                       JdbcTemplate jdbcTemplate,
+                       GenreDao genreDao,
+                       MpaDao mpaDao) {
         this.filmStorage = filmStorage;
         this.userStorage = userStorage;
         this.jdbcTemplate = jdbcTemplate;
+        this.genreDao = genreDao;
+        this.mpaDao = mpaDao;
     }
 
     public Film add(Film film) {
         log.info("Добавление нового фильма: {}", film.getName());
         validReleaseDate(film);
+        validateMpaAndGenres(film);
         filmStorage.addFilm(film);
         log.debug("Фильм успешно добавлен");
         return film;
@@ -45,6 +55,7 @@ public class FilmService {
     public Film update(Film film) {
         log.info("Обновление фильма: {}", film.getName());
         validReleaseDate(film);
+        validateMpaAndGenres(film);
 
         if (filmStorage.findById(film.getId()).isPresent()) {
             filmStorage.updateFilm(film);
@@ -123,6 +134,29 @@ public class FilmService {
         if (film.getReleaseDate().isBefore(MIN_RELEASE_DATE)) {
             log.warn("Ошибка в дате релиза по фильму с id = {}", film.getId());
             throw new ValidationException("Дата релиза не может быть раньше 28 декабря 1895 года");
+        }
+    }
+
+    private void validateMpaAndGenres(Film film) {
+
+        if (film.getMpa() != null && film.getMpa().getId() != null) {
+            mpaDao.findById(film.getMpa().getId())
+                    .orElseThrow(() -> {
+                        log.warn("Рейтинг MPA с id = {} не найден", film.getMpa().getId());
+                        return new NotFoundException("Рейтинг MPA с id = " + film.getMpa().getId() + " не найден.");
+                    });
+        }
+
+        if (film.getGenres() != null && !film.getGenres().isEmpty()) {
+            for (Genre genre : film.getGenres()) {
+                if (genre.getId() != null) {
+                    genreDao.findById(genre.getId())
+                            .orElseThrow(() -> {
+                                log.warn("Жанр с id = {} не найден", genre.getId());
+                                return new NotFoundException("Жанр с id = " + genre.getId() + " не найден.");
+                            });
+                }
+            }
         }
     }
 }
