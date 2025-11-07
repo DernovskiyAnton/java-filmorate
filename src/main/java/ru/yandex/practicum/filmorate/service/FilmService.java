@@ -1,35 +1,54 @@
 package ru.yandex.practicum.filmorate.service;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import ru.yandex.practicum.filmorate.exception.NotFoundException;
 import ru.yandex.practicum.filmorate.exception.ValidationException;
 import ru.yandex.practicum.filmorate.model.Film;
+import ru.yandex.practicum.filmorate.model.Genre;
 import ru.yandex.practicum.filmorate.model.User;
-import ru.yandex.practicum.filmorate.storage.InMemoryFilmStorage;
-import ru.yandex.practicum.filmorate.storage.InMemoryUserStorage;
+import ru.yandex.practicum.filmorate.storage.FilmDbStorage;
+import ru.yandex.practicum.filmorate.storage.GenreDao;
+import ru.yandex.practicum.filmorate.storage.MpaDao;
+import ru.yandex.practicum.filmorate.storage.UserStorage;
 
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class FilmService {
 
     private static final LocalDate MIN_RELEASE_DATE = LocalDate.of(1895, 12, 28);
 
-    private final InMemoryFilmStorage inMemoryFilmStorage;
-    private final InMemoryUserStorage inMemoryUserStorage;
+    private final FilmDbStorage filmStorage;
+    private final UserStorage userStorage;
+    private final JdbcTemplate jdbcTemplate;
+    private final GenreDao genreDao;
+    private final MpaDao mpaDao;
+
+    public FilmService(@Qualifier("filmDbStorage") FilmDbStorage filmStorage,
+                       @Qualifier("userDbStorage") UserStorage userStorage,
+                       JdbcTemplate jdbcTemplate,
+                       GenreDao genreDao,
+                       MpaDao mpaDao) {
+        this.filmStorage = filmStorage;
+        this.userStorage = userStorage;
+        this.jdbcTemplate = jdbcTemplate;
+        this.genreDao = genreDao;
+        this.mpaDao = mpaDao;
+    }
 
     public Film add(Film film) {
         log.info("Добавление нового фильма: {}", film.getName());
         validReleaseDate(film);
-        film.setId(inMemoryFilmStorage.getNextId());
-        inMemoryFilmStorage.addFilm(film);
+        validateMpaAndGenres(film);
+        filmStorage.addFilm(film);
         log.debug("Фильм успешно добавлен");
         return film;
     }
@@ -37,11 +56,12 @@ public class FilmService {
     public Film update(Film film) {
         log.info("Обновление фильма: {}", film.getName());
         validReleaseDate(film);
+        validateMpaAndGenres(film);
 
-        if (inMemoryFilmStorage.findById(film.getId()).isPresent()) {
-            inMemoryFilmStorage.addFilm(film);
+        if (filmStorage.findById(film.getId()).isPresent()) {
+            filmStorage.updateFilm(film);
             log.debug("Фильм успешно обновлен");
-            return film;
+            return filmStorage.findById(film.getId()).get();
         }
 
         log.warn("Фильм с id = {} не найден", film.getId());
@@ -49,51 +69,60 @@ public class FilmService {
     }
 
     public Collection<Film> findAll() {
-        Collection<Film> films = inMemoryFilmStorage.findAll();
-        return films;
+        return filmStorage.findAll();
+    }
+
+    public Film findById(Long id) {
+        return filmStorage.findById(id)
+                .orElseThrow(() -> new NotFoundException("Фильм с id = " + id + " не найден."));
     }
 
     public Film like(Long filmId, Long userId) {
-        Film film = inMemoryFilmStorage.findById(filmId)
+        Film film = filmStorage.findById(filmId)
                 .orElseThrow(() -> {
                     log.warn("Фильм с id = {} не найден", filmId);
                     return new NotFoundException("Фильм с id = " + filmId + " не найден.");
                 });
 
-        User user = inMemoryUserStorage.findById(userId)
+        User user = userStorage.findById(userId)
                 .orElseThrow(() -> {
                     log.warn("Пользователь с id = {} не найден", userId);
                     return new NotFoundException("Пользователь с id = " + userId + " не найден.");
                 });
 
-        film.getLikes().add(userId);
+        String sql = "MERGE INTO film_likes (film_id, user_id) VALUES (?, ?)";
+        jdbcTemplate.update(sql, filmId, userId);
 
-        return film;
+        log.info("Пользователь {} поставил лайк фильму {}", userId, filmId);
+
+        return filmStorage.findById(filmId).get();
     }
 
     public Film deleteLike(Long filmId, Long userId) {
-        Film film = inMemoryFilmStorage.findById(filmId)
+        Film film = filmStorage.findById(filmId)
                 .orElseThrow(() -> {
                     log.warn("Фильм с id = {} не найден", filmId);
                     return new NotFoundException("Фильм с id = " + filmId + " не найден.");
                 });
 
-        User user = inMemoryUserStorage.findById(userId)
+        User user = userStorage.findById(userId)
                 .orElseThrow(() -> {
                     log.warn("Пользователь с id = {} не найден", userId);
                     return new NotFoundException("Пользователь с id = " + userId + " не найден.");
                 });
 
-        film.getLikes().remove(userId);
+        String sql = "DELETE FROM film_likes WHERE film_id = ? AND user_id = ?";
+        jdbcTemplate.update(sql, filmId, userId);
+
         log.info("Пользователь с id = {} удалил лайк у фильма с id = {}", userId, filmId);
 
-        return film;
+        return filmStorage.findById(filmId).get();
     }
 
     public Collection<Film> getPopularFilms(int count) {
         log.info("Получение {} самых популярных фильмов", count);
 
-        Collection<Film> popularFilms = inMemoryFilmStorage.findAll().stream()
+        Collection<Film> popularFilms = filmStorage.findAll().stream()
                 .sorted(Comparator.comparingInt((Film film) -> film.getLikes().size()).reversed())
                 .limit(count)
                 .collect(Collectors.toList());
@@ -109,5 +138,25 @@ public class FilmService {
         }
     }
 
+    private void validateMpaAndGenres(Film film) {
 
+        if (film.getMpa() != null && film.getMpa().getId() != null) {
+            if (!mpaDao.existsById(film.getMpa().getId())) {
+                log.warn("Рейтинг MPA с id = {} не найден", film.getMpa().getId());
+                throw new NotFoundException("Рейтинг MPA с id = " + film.getMpa().getId() + " не найден.");
+            }
+        }
+
+        if (film.getGenres() != null && !film.getGenres().isEmpty()) {
+            Set<Integer> genreIds = film.getGenres().stream()
+                    .map(Genre::getId)
+                    .filter(id -> id != null)
+                    .collect(Collectors.toSet());
+
+            if (!genreIds.isEmpty() && !genreDao.allExist(genreIds)) {
+                log.warn("Один или несколько жанров не найдены");
+                throw new NotFoundException("Один или несколько указанных жанров не существуют.");
+            }
+        }
+    }
 }
