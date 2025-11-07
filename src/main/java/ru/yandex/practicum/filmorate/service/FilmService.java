@@ -17,6 +17,7 @@ import ru.yandex.practicum.filmorate.storage.UserStorage;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -140,22 +141,21 @@ public class FilmService {
     private void validateMpaAndGenres(Film film) {
 
         if (film.getMpa() != null && film.getMpa().getId() != null) {
-            mpaDao.findById(film.getMpa().getId())
-                    .orElseThrow(() -> {
-                        log.warn("Рейтинг MPA с id = {} не найден", film.getMpa().getId());
-                        return new NotFoundException("Рейтинг MPA с id = " + film.getMpa().getId() + " не найден.");
-                    });
+            if (!mpaDao.existsById(film.getMpa().getId())) {
+                log.warn("Рейтинг MPA с id = {} не найден", film.getMpa().getId());
+                throw new NotFoundException("Рейтинг MPA с id = " + film.getMpa().getId() + " не найден.");
+            }
         }
 
         if (film.getGenres() != null && !film.getGenres().isEmpty()) {
-            for (Genre genre : film.getGenres()) {
-                if (genre.getId() != null) {
-                    genreDao.findById(genre.getId())
-                            .orElseThrow(() -> {
-                                log.warn("Жанр с id = {} не найден", genre.getId());
-                                return new NotFoundException("Жанр с id = " + genre.getId() + " не найден.");
-                            });
-                }
+            Set<Integer> genreIds = film.getGenres().stream()
+                    .map(Genre::getId)
+                    .filter(id -> id != null)
+                    .collect(Collectors.toSet());
+
+            if (!genreIds.isEmpty() && !genreDao.allExist(genreIds)) {
+                log.warn("Один или несколько жанров не найдены");
+                throw new NotFoundException("Один или несколько указанных жанров не существуют.");
             }
         }
     }

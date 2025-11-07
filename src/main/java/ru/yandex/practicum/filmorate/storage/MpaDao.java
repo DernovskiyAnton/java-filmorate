@@ -6,7 +6,9 @@ import org.springframework.stereotype.Component;
 import ru.yandex.practicum.filmorate.model.Mpa;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Optional;
+import java.util.Set;
 
 @Component
 @RequiredArgsConstructor
@@ -25,5 +27,11 @@ public class MpaDao {
                         new Mpa(rs.getInt("rating_id"), rs.getString("name")), id)
                 .stream()
                 .findFirst();
+    }
+
+    public boolean existsById(Integer id) {
+        String sql = "SELECT COUNT(*) FROM mpa_rating WHERE rating_id = ?";
+        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, id);
+        return count != null && count > 0;
     }
 }
